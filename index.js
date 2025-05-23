@@ -28,7 +28,7 @@ app.post("/generate", async (req, res) => {
       return res.status(402).json({ error: "Out of credits" });
     }
 
-    const {{ prompt }} = req.body;
+    const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: "Missing prompt" });
 
     const payload = {

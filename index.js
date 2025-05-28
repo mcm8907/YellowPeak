@@ -42,32 +42,79 @@ async function validateUser(token) {
   return data;
 }
 
+const { createClient } = require('@supabase/supabase-js');
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
+async function validateUser(token) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("token", token)
+    .single();
+
+  if (error || !data || data.credits <= 0) {
+    throw new Error("Invalid or insufficient credits.");
+  }
+
+  // Deduct 1 credit
+  await supabase
+    .from("users")
+    .update({ credits: data.credits - 1, last_used: new Date() })
+    .eq("token", token);
+
+  // Log usage
+  await supabase.from("usage_logs").insert({
+    token,
+    prompt_type: "email_generation",
+  });
+
+  return data;
+}
+
 app.post("/generate", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({ error: "Unauthorized" });
     }
+
     const token = authHeader.split(" ")[1];
-
-    // TODO: Replace this with real DB check
-    const mockUser = {
-      credits: 10,
-      id: token,
-    };
-
-    if (mockUser.credits <= 0) {
-      return res.status(402).json({ error: "Out of credits" });
-    }
+    await validateUser(token); // ✅ Supabase check and deduction
 
     const { prompt } = req.body;
-    if (!prompt) return res.status(400).json({ error: "Missing prompt" });
+    if (!prompt) {
+      return res.status(400).json({ error: "Missing prompt" });
+    }
 
     const payload = {
       model: MODEL,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.8,
     };
+
+    const openaiRes = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+      }
+    );
+
+    const response = openaiRes.data.choices[0].message.content;
+    res.json({ response });
+
+  } catch (error) {
+    console.error(error);
+    res.status(400).json({ error: error.message || "Something went wrong" });
+  }
+});
 
     const openaiRes = await axios.post("https://api.openai.com/v1/chat/completions", payload, {
       headers: {

@@ -10,6 +10,38 @@ app.use(express.json());
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const MODEL = "gpt-4"; // or "gpt-3.5-turbo"
 
+const SUPABASE_URL = "https://<your-project-id>.supabase.co";
+const SUPABASE_KEY = "your-service-role-key"; // NEVER expose this to frontend
+
+const { createClient } = require("@supabase/supabase-js");
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function validateUser(token) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("token", token)
+    .single();
+
+  if (error || !data || data.credits <= 0) {
+    throw new Error("Invalid or insufficient credits.");
+  }
+
+  // Deduct 1 credit
+  await supabase
+    .from("users")
+    .update({ credits: data.credits - 1, last_used: new Date() })
+    .eq("token", token);
+
+  // Log the use
+  await supabase.from("usage_logs").insert({
+    token,
+    prompt_type: "email_generation"
+  });
+
+  return data;
+}
+
 app.post("/generate", async (req, res) => {
   try {
     const authHeader = req.headers.authorization;

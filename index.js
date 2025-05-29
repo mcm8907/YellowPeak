@@ -1,50 +1,24 @@
-// index.js — Yellow Peak Backend
-
+// index.js (updated with Supabase integration)
 const express = require("express");
 const axios = require("axios");
+const cors = require("cors");
+const bodyParser = require("body-parser");
 const { createClient } = require("@supabase/supabase-js");
-require("dotenv").config();
+require("dotenv\config");
 
 const app = express();
-app.use(express.json());
+app.use(cors());
+app.use(bodyParser.json());
 
 const PORT = process.env.PORT || 3000;
-const MODEL = "gpt-4";
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
+const MODEL = "gpt-4";
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-// Validate user and deduct credit
-async function validateUser(token) {
-  const { data, error } = await supabase
-    .from("users")
-    .select("*")
-    .eq("token", token)
-    .single();
-
-  if (error || !data || data.credits <= 0) {
-    throw new Error("Invalid or insufficient credits.");
-  }
-
-  // Deduct 1 credit
-  await supabase
-    .from("users")
-    .update({ credits: data.credits - 1, last_used: new Date().toISOString() })
-    .eq("token", token);
-
-  // Log usage
-  await supabase.from("usage_logs").insert({
-    token,
-    prompt_type: "email_generation",
-    timestamp: new Date().toISOString(),
-  });
-
-  return data;
-}
-
-// Main AI generation route
 app.post("/generate", async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -79,7 +53,7 @@ app.post("/generate", async (req, res) => {
 
   // Generate with OpenAI
   const payload = {
-    model: "gpt-4",
+    model: MODEL,
     messages: [{ role: "user", content: prompt }],
     temperature: 0.8,
   };
@@ -101,11 +75,4 @@ app.post("/generate", async (req, res) => {
   }
 });
 
-// Health check
-app.get("/ping", (req, res) => {
-  res.send("Yellow Peak API is live ✅");
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Yellow Peak API running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 YellowPeak running on port ${PORT}`));

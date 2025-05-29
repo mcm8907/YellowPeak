@@ -46,40 +46,58 @@ async function validateUser(token) {
 
 // Main AI generation route
 app.post("/generate", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  // Get user from Supabase
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", token)
+    .single();
+
+  if (error || !user) {
+    return res.status(404).json({ error: "User not found" });
+  }
+
+  if (user.credits <= 0) {
+    return res.status(402).json({ error: "Out of credits" });
+  }
+
+  const { prompt } = req.body;
+  if (!prompt) return res.status(400).json({ error: "Missing prompt" });
+
+  // Deduct one credit
+  await supabase
+    .from("users")
+    .update({ credits: user.credits - 1 })
+    .eq("id", token);
+
+  // Generate with OpenAI
+  const payload = {
+    model: "gpt-4",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.8,
+  };
+
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
+    const openaiRes = await axios.post("https://api.openai.com/v1/chat/completions", payload, {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+    });
 
-    const token = authHeader.split(" ")[1];
-    await validateUser(token);
+    const aiResponse = openaiRes.data.choices[0].message.content;
+    return res.json({ result: aiResponse });
 
-    const { prompt } = req.body;
-    if (!prompt) return res.status(400).json({ error: "Missing prompt" });
-
-    const payload = {
-      model: MODEL,
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.85,
-    };
-
-    const openaiRes = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
-      payload,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-        },
-      }
-    );
-
-    const response = openaiRes.data.choices[0].message.content;
-    res.json({ response });
-  } catch (error) {
-    console.error("/generate error:", error);
-    res.status(400).json({ error: error.message || "Something went wrong" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "OpenAI request failed" });
   }
 });
 

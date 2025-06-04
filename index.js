@@ -17,7 +17,7 @@ const MODEL = "gpt-4";
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_KEY
 );
 
 app.post("/generate", async (req, res) => {
